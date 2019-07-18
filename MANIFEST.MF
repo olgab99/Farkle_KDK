@@ -1,0 +1,8 @@
+Manifest-Version: 1.0
+Main-Class: com.olmatech.kindle.farkle.Farkle
+Implementation-Version: 1.0.0
+Implementation-Vendor: olmatech.com
+Implementation-Title: FarkleTouch
+Implementation-URL: http://www.olmatech.com/
+kindlet-Specification-Version: 2.0
+kindlet-Target-Version: 2.0

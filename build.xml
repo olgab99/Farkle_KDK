@@ -1,0 +1,172 @@
+<?xml version="1.0"?>
+
+<project name="FarkleTouch3" basedir="." default="build-active-content">
+  <!-- ===================================================================== -->
+  <!-- | BUILD PROPERTIES                                                  | -->
+  <!-- ===================================================================== -->
+  <!-- Load properties specific to this Kindlet. -->
+  <property file="kindlet.properties" />
+
+  <!-- Define local properties -->
+  <property name="dir.kdk"              location="D:/Kindle/KDKv2.0/" />
+  <property name="dir.keystore"         location="D:/Kindle/KEYS/keys" />
+  <property name="dir.src"              location="${basedir}/src" />
+  <property name="dir.lib"              location="${basedir}/lib" />
+  <property name="dir.build"            location="${basedir}/build" />
+  <property name="dir.build.classes"    location="${dir.build}/classes" />
+  <property name="file.output"          location="${dir.build}/${kindlet.title}.azw2" />
+
+	<!-- Load the password for the keystore -->
+	<import file="${dir.keystore}/dev-keys.xml" optional="false"/>
+	<import file="${dir.keystore}/dev-aliases.xml" optional="false"/>
+
+  <!-- Set the bootclasspath for compiling against the PBP and AGUI. -->
+  <path id="pbp.bootclasspath">
+    <pathelement location="${dir.lib}/btclasses.zip"/>
+    <pathelement location="${dir.lib}/basis.jar"/>
+    <pathelement location="${dir.lib}/jaas.jar"/>
+    <pathelement location="${dir.lib}/jce.jar"/>
+    <pathelement location="${dir.lib}/jsse-cdc.jar"/>
+  </path>
+
+  <!-- This target prints out the networking configuration for this kindlet. -->
+  <target name="networking-status" depends="check-network-support,check-network-access-grants" if="no-network-support-with-valid-access-grants">
+    <echo message="WARNING: In your 'kindlet.properties' file, 'kindlet.networkSupport' is null/false, however you've specifed 'kindlet.networkAccessGrants'. Since network support is turned off, networking for this application will not work. Please set 'kindlet.networkSupport' to true if you would like to turn on networking."/>
+  </target>
+
+  <!-- ===================================================================== -->
+  <!-- | BUILD TARGETS                                                     | -->
+  <!-- ===================================================================== -->
+  <target name="compile" description="Compiles the Java source files">
+    <mkdir dir="${dir.build.classes}" />
+    <!--
+            Compile source files.  
+            Note the target and source attributes are required to generate 
+            bytecode compatible with the Kindle Development Kit (KDK).
+    -->
+    <javac target="1.4" 
+           source="1.4"
+           listfiles="yes" 
+           srcdir="${dir.src}" 
+           destdir="${dir.build.classes}"
+           includeAntRuntime="no"
+           bootclasspathref="pbp.bootclasspath"
+           debug="true">
+      <!-- Include the Kindle Development Kit (KDK) APIs on the classpath -->
+      <classpath>
+        <fileset dir="${dir.kdk}/lib">
+          <include name="**/*.jar" />
+        </fileset>
+      </classpath>
+      <include name="**/*.java" />
+    </javac>
+    <!--
+            Copy any non-source files, these may include images, property files, etc. 
+    -->
+    <copy todir="${dir.build.classes}">
+      <fileset dir="${dir.src}">
+        <include name="**/*" />
+        <exclude name="**/*.java" />
+      </fileset>
+    </copy>
+  </target>
+  
+  <target name="build" depends="compile" description="Alias for compile target"/>
+
+  <target name="check-network-support" if="kindlet.networkSupport" description="Check that network support is supported">
+    <condition property="network-support-is-true">
+      <istrue value="${kindlet.networkSupport}"/>
+    </condition>
+  </target>
+
+  <!-- This target checks that network access grants have been set. -->
+  <target name="check-network-access-grants" depends="check-network-support">
+    <condition property="network-access-grants-are-valid">
+      <or>
+        <equals arg1="sponsored" arg2="${kindlet.networkAccessGrants}"/>
+        <equals arg1="userSupplied" arg2="${kindlet.networkAccessGrants}"/>
+        <not>
+          <isset property="kindlet.networkAccessGrants"/>
+        </not>
+      </or>
+    </condition>
+
+    <condition property="no-network-support-with-valid-access-grants">
+      <and>
+        <isset property="network-access-grants-are-valid"/>
+        <not>
+          <isset property="network-support-is-true"/>
+        </not>
+      </and>
+    </condition>
+
+    <fail message="Unrecognized network access grant '${kindlet.networkAccessGrants}'. Valid network access grants include {sponsored, userSupplied}" unless="network-access-grants-are-valid"/>
+  </target>
+
+  <target name="sign-for-network" if="network-support-is-true" depends="check-network-support" description="Adds network support to the Kindle App" >
+    <available file="${file.output}" property="file.available"/>
+    <fail message="Jar file cannot be found (${file.output}). File signing failed." unless="file.available"/>
+    <signjar jar="${file.output}" 
+             alias="${dev.network.alias}" 
+             keystore="${dir.keystore}/${kindlet.keystore}" 
+             storepass="${developer.keystore.storepass}" />
+  </target>
+
+  <!-- Developer apps do not have Implementation-Id defined. -->
+  <target name="jar-for-developer" description="Jars a file for a developer application">
+    <jar basedir="${dir.build.classes}" destfile="${file.output}">
+      <manifest>
+        <attribute name="Main-Class"             value="${kindlet.mainClass}" />
+        <attribute name="Implementation-Vendor"  value="${kindlet.vendor}" />
+        <attribute name="Implementation-Title"   value="${kindlet.title}" />
+        <attribute name="Implementation-Version" value="${kindlet.version}" />
+        <attribute name="Implementation-URL"     value="${kindlet.url}" />
+        <attribute name="Amazon-Cover-Image"     value="${kindlet.image}" />
+        <attribute name="Network-Access-Grants"  value="${kindlet.networkAccessGrants}" />
+        <attribute name="Extension-List"         value="Kindlet" />
+        <attribute name="kindlet-Extension-Name" value="com.amazon.kindle.kindlet" />
+        <attribute name="kindlet-Specification-Version"  value="${kindlet.api.version}" />
+        <attribute name="kindlet-Target-Version"  value="${kindlet.api.targetVersion}" />
+      </manifest>
+    </jar>
+  </target>
+
+  <target name="jar-and-sign" description="Packages and signs the Kindle Active Content." depends="jar-for-developer">
+    <!--
+            Sign the jar file to permit running on the device. 
+    -->
+    <available file="${file.output}" property="file.available"/>
+    <fail message="Jar file cannot be found (${file.output}). File signing failed." unless="file.available"/>
+    <signjar jar="${file.output}" 
+             alias="${dev.kindlet.alias}" 
+             keystore="${dir.keystore}/${kindlet.keystore}" 
+             storepass="${developer.keystore.storepass}" />
+    <signjar jar="${file.output}" 
+             alias="${dev.interaction.alias}" 
+             keystore="${dir.keystore}/${kindlet.keystore}" 
+             storepass="${developer.keystore.storepass}" />
+  </target>
+  
+  <!-- Top level targets for building kindle applications. -->
+  <target name="clean" description="Cleans the build directory.">
+    <delete dir="${dir.build}" />
+  </target>
+
+  <target name="build-active-content" depends="build-unsigned-active-content" description="Build an unsigned active content which can be run on the Kindle Simulator" />
+
+  <target name="build-unsigned-active-content" description="Build an unsigned active content file (.azw2)"
+        depends="check-network-access-grants,compile,jar-for-developer,networking-status">
+    <echo message="WARNING: This Kindle active content will not run on the device, however it will run in the Kindle Simulator. Please run 'ant build-signed-active-content' if you would like to compile your active content to run on the device." />
+  </target>
+
+  <!-- Check that the keystore file is present. -->
+  <target name="check-keystore" description="Check that the keystore file is present.">
+    <available file="${dir.keystore}/${kindlet.keystore}" property="keystore.available"/>
+    <fail message="Unable to locate keystore file. Please ensure that your keystore is located in '${dir.keystore}' and that 'kindlet.keystore' is specified in your Kindlet properties file. Also, please check that 'kindlet.keystore' is set correctly in your kindlet.properties file. " unless="keystore.available"/>
+  </target>
+
+  <target name="build-signed-active-content" description="Build a signed active content file (.azw2)"
+        depends="check-keystore,compile,jar-and-sign,sign-for-network,networking-status">
+    <echo message="This Kindle Active Content has been built to run on the device." />
+  </target>
+</project>
